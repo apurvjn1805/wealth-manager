@@ -1,0 +1,59 @@
+<app-loading-bar />
+<app-toast />
+
+@if (!auth.isLoggedIn()) {
+  <app-login-overlay (login)="doLogin($event)" />
+} @else {
+  <div class="app">
+    <div class="top-controls">
+      <button class="btn-sec theme-btn" type="button" (click)="toggleTheme()">
+        {{ theme() === 'dark' ? '☀ Light mode' : '🌙 Dark mode' }}
+      </button>
+    </div>
+
+    <app-dashboard-header
+      [lastUpdated]="lastUpdated()"
+      [syncStatus]="data.syncStatus()"
+      [syncColor]="data.syncColor()"
+    />
+
+    <app-hero-summary [last]="data.lastSnapshot()" [previous]="previousSnapshot()" />
+    <app-main-chart [snapshots]="data.snapshots()" [mode]="chartMode()" [onModeChange]="setChartMode.bind(this)" />
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+      <app-allocation-donut [snapshot]="data.lastSnapshot()" />
+      <app-growth-table [snapshots]="data.snapshots()" />
+    </div>
+
+    <app-asset-breakdown [snapshot]="data.lastSnapshot()" />
+
+    <div class="sec"><div class="sec-title">Log Data</div><div class="sec-line"></div><span style="font-size:10px;color:#c8f060;letter-spacing:1px">● synced to Google Sheets</span></div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <div class="entry-tabs">
+        <button class="entry-tab" [class.active]="entryTab() === 'snapshot'" (click)="setEntryTab('snapshot')">📸 Log Snapshot</button>
+        <button class="entry-tab" [class.active]="entryTab() === 'sip'" (click)="setEntryTab('sip')">🔁 SIP Tracker</button>
+      </div>
+      <div class="entry-body">
+        @if (entryTab() === 'snapshot') {
+          <app-snapshot-form [lastSnapshot]="data.lastSnapshot()" (save)="saveSnapshot($event)" />
+        } @else {
+          <app-sip-tracker [sips]="data.sips()" (addSip)="addSip($event)" (toggle)="data.toggleSip($event)" (remove)="requestDeleteSip($event)" />
+        }
+      </div>
+    </div>
+
+    <app-snapshot-history [snapshots]="data.snapshots()" (remove)="requestDeleteSnapshot($event)" />
+  </div>
+}
+
+@if (pendingDelete(); as pending) {
+  <div class="confirm-bar">
+    <span>
+      Confirm delete {{ pending.type === 'sip' ? 'SIP' : 'snapshot' }}?
+    </span>
+    <div class="confirm-actions">
+      <button class="btn-sec" type="button" (click)="cancelDelete()">Cancel</button>
+      <button class="btn-primary" type="button" (click)="confirmDelete()">Delete</button>
+    </div>
+  </div>
+}

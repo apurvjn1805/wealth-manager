@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wealth Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#0a0a0f; --surface:#111118; --surface2:#1a1a24;
+    --border:rgba(255,255,255,0.07); --accent:#c8f060;
+    --text:#e8e8f0; --muted:#666680;
+    --cash:#60f0c8; --equity:#c8f060; --debt:#f0c860;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'DM Mono',monospace;background:var(--bg);color:var(--text);min-height:100vh;padding:36px 24px 80px}
+  .app{max-width:1100px;margin:0 auto}
+
+  /* Login overlay */
+  #loginOverlay{position:fixed;inset:0;background:#0a0a0f;z-index:9999;display:flex;align-items:center;justify-content:center}
+  .login-box{background:#111118;border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:40px;width:360px;text-align:center}
+  .login-logo{font-family:'Syne',sans-serif;font-size:28px;font-weight:800;margin-bottom:6px}
+  .login-logo span{color:var(--accent)}
+  .login-sub{font-size:11px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:32px}
+  .login-inp{width:100%;background:#1a1a24;border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:12px 16px;color:var(--text);font-family:'DM Mono',monospace;font-size:13px;margin-bottom:12px;outline:none}
+  .login-inp:focus{border-color:rgba(200,240,96,0.4)}
+  .login-btn{width:100%;background:var(--accent);color:#0a0a0f;border:none;border-radius:10px;padding:13px;font-family:'Syne',sans-serif;font-size:15px;font-weight:800;cursor:pointer;letter-spacing:0.5px;margin-top:4px}
+  .login-btn:hover{opacity:0.9}
+  .login-err{font-size:11px;color:#f06060;margin-top:10px;min-height:16px}
+
+  /* Toast */
+  #toast{position:fixed;bottom:28px;right:28px;background:#1a1a24;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 20px;font-size:12px;z-index:9000;transform:translateY(80px);opacity:0;transition:all 0.3s;pointer-events:none}
+  #toast.show{transform:translateY(0);opacity:1}
+  #toast.ok{border-color:rgba(200,240,96,0.3);color:var(--accent)}
+  #toast.err{border-color:rgba(240,96,96,0.3);color:#f06060}
+
+  /* Loading */
+  #loadingBar{position:fixed;top:0;left:0;height:2px;background:var(--accent);width:0%;transition:width 0.4s;z-index:9999}
+
+  h1{font-family:'Syne',sans-serif;font-size:clamp(28px,5vw,48px);font-weight:800;line-height:1}
+  h1 span{color:var(--accent)}
+  .tag{font-size:11px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+  .sub{font-size:12px;color:var(--muted);margin-top:6px;display:flex;gap:14px;align-items:center}
+
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px}
+  .sec{display:flex;align-items:center;gap:12px;margin:36px 0 14px}
+  .sec-title{font-family:'Syne',sans-serif;font-size:17px;font-weight:700}
+  .sec-line{flex:1;height:1px;background:var(--border)}
+  .sec-note{font-size:10px;color:#444460;letter-spacing:1px}
+
+  /* Hero */
+  .hero{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:24px;margin-bottom:20px;position:relative;overflow:hidden}
+  .hero::before{content:'';position:absolute;top:-60px;right:-60px;width:200px;height:200px;background:radial-gradient(circle,rgba(200,240,96,0.06) 0%,transparent 70%);pointer-events:none}
+  .hero-label{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+  .hero-val{font-family:'Syne',sans-serif;font-size:clamp(24px,4vw,40px);font-weight:800;color:var(--accent);line-height:1}
+  .pill{display:inline-flex;align-items:center;gap:4px;margin-top:8px;font-size:11px;background:rgba(200,240,96,0.1);color:var(--accent);padding:3px 10px;border-radius:20px}
+  .stat-val{font-family:'Syne',sans-serif;font-size:22px;font-weight:700;margin-bottom:4px}
+  .stat-sub{font-size:11px;color:var(--muted)}
+
+  /* Tabs */
+  .tab-bar{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}
+  .tab-btn{font-family:'DM Mono',monospace;font-size:11px;letter-spacing:1px;text-transform:uppercase;padding:5px 14px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;transition:all 0.2s}
+  .tab-btn.active{background:var(--accent);color:#0a0a0f;border-color:var(--accent);font-weight:600}
+
+  canvas{width:100%!important;display:block}
+
+  /* Breakdown */
+  .bk-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px}
+  .bk-title{font-size:10px;letter-spacing:2px;text-transform:uppercase;margin-bottom:14px}
+  .bk-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.05)}
+  .bk-row:last-child{border-bottom:none}
+  .bk-name{font-size:11px;color:var(--muted);min-width:100px}
+  .bk-bar-wrap{flex:1;height:3px;background:rgba(255,255,255,0.05);border-radius:2px;overflow:hidden}
+  .bk-bar{height:100%;border-radius:2px;transition:width 0.8s}
+  .bk-amt{font-size:11px;color:var(--text);min-width:60px;text-align:right}
+
+  /* Table */
+  table{width:100%;border-collapse:collapse}
+  thead th{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding:13px 16px;text-align:left;border-bottom:1px solid var(--border);background:var(--surface2)}
+  tbody tr{border-bottom:1px solid rgba(255,255,255,0.04);transition:background 0.15s}
+  tbody tr:hover{background:var(--surface2)}
+  td{padding:10px 16px;font-size:12px}
+  .badge{font-size:10px;padding:2px 8px;border-radius:10px}
+  .badge.up{background:rgba(200,240,96,0.12);color:var(--accent)}
+  .badge.dn{background:rgba(240,96,96,0.12);color:#f06060}
+
+  /* Entry panel */
+  .entry-tabs{display:flex;background:var(--surface2);border-bottom:1px solid var(--border)}
+  .entry-tab{flex:1;padding:13px 10px;font-family:'DM Mono',monospace;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;border:none;background:transparent;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all 0.2s}
+  .entry-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+  .entry-body{padding:28px}
+  .entry-sec{display:none}.entry-sec.active{display:block}
+
+  .fdivider{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin:20px 0 12px;display:flex;align-items:center;gap:8px}
+  .fdivider::after{content:'';flex:1;height:1px;background:var(--border)}
+  .fgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+  .flabel{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:5px}
+  .finp{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-family:'DM Mono',monospace;font-size:12px;width:100%;outline:none;transition:border-color 0.2s}
+  .finp.c:focus{border-color:rgba(96,240,200,0.4)}
+  .finp.e:focus{border-color:rgba(200,240,96,0.4)}
+  .finp.d:focus{border-color:rgba(240,200,96,0.4)}
+
+  .preview{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 20px;display:flex;gap:28px;flex-wrap:wrap;margin-top:20px;align-items:center}
+  .prev-label{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
+  .prev-val{font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:#444460}
+  .prev-val.live{color:var(--accent)}
+
+  .action-row{display:flex;align-items:center;gap:14px;margin-top:18px;flex-wrap:wrap}
+  .btn-primary{background:var(--accent);color:#0a0a0f;border:none;border-radius:10px;padding:11px 26px;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;cursor:pointer;letter-spacing:0.5px;transition:all 0.2s}
+  .btn-primary:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(200,240,96,0.2)}
+  .btn-primary:disabled{opacity:0.5;cursor:not-allowed;transform:none}
+  .btn-sec{background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:10px;padding:11px 18px;font-family:'DM Mono',monospace;font-size:12px;cursor:pointer}
+
+  /* SIP */
+  .sip-row{display:grid;grid-template-columns:2fr 1fr 1fr 1.2fr 28px;gap:10px;align-items:center;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:11px 14px;margin-bottom:8px}
+  .sip-add{display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:10px;align-items:end}
+  .sip-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:20px;padding-top:20px;border-top:1px solid var(--border)}
+  .sip-card{background:var(--surface2);border-radius:10px;padding:13px 16px}
+
+  /* History chips */
+  .snap-chips{display:flex;flex-wrap:wrap;gap:10px}
+  .snap-chip{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:12px}
+
+  select{appearance:none;-webkit-appearance:none}
+  input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appearance:none}
+  input[type=number]{-moz-appearance:textfield}
+
+  @media(max-width:700px){
+    .hero,.bk-grid{grid-template-columns:1fr}
+    .sip-row,.sip-add{grid-template-columns:1fr 1fr}
+  }
+</style>
+</head>
+<body>
+
+<!-- Loading bar -->
+<div id="loadingBar"></div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- Login overlay -->
+<div id="loginOverlay">
+  <div class="login-box">
+    <div class="login-logo">Wealth <span>Tracker</span></div>
+    <div class="login-sub">Personal Finance Dashboard</div>
+    <input class="login-inp" id="loginUser" type="text" placeholder="Username" autocomplete="username">
+    <input class="login-inp" id="loginPass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="login-btn" onclick="doLogin()">Sign In →</button>
+    <div class="login-err" id="loginErr"></div>
+  </div>
+</div>
+
+<div class="app" id="mainApp" style="display:none">
+
+  <!-- Header -->
+  <header style="margin-bottom:36px">
+    <div class="tag">Personal Finance Dashboard</div>
+    <h1>Wealth <span>Tracker</span></h1>
+    <div class="sub">
+      <span id="lastUpdated">Loading…</span>
+      <span id="syncStatus" style="color:var(--muted)"></span>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <div class="card hero" id="hero" style="margin-bottom:20px">
+    <div>
+      <div class="hero-label">Net Worth</div>
+      <div class="hero-val" id="h-nw">—</div>
+      <div class="pill" id="h-pill" style="display:none"></div>
+    </div>
+    <div>
+      <div class="hero-label">Equity</div>
+      <div class="stat-val" style="color:var(--equity)" id="h-eq">—</div>
+      <div class="stat-sub" id="h-eq-pct"></div>
+    </div>
+    <div>
+      <div class="hero-label">Debt</div>
+      <div class="stat-val" style="color:var(--debt)" id="h-dt">—</div>
+      <div class="stat-sub" id="h-dt-pct"></div>
+    </div>
+  </div>
+
+  <!-- Chart -->
+  <div class="sec"><div class="sec-title">Net Worth Over Time</div><div class="sec-line"></div></div>
+  <div class="card" style="margin-bottom:20px">
+    <div class="tab-bar">
+      <button class="tab-btn active" onclick="setChartMode('networth',this)">Net Worth</button>
+      <button class="tab-btn" onclick="setChartMode('stacked',this)">Asset Layers</button>
+      <button class="tab-btn" onclick="setChartMode('growth',this)">Growth %</button>
+    </div>
+    <canvas id="mainChart" height="240"></canvas>
+  </div>
+
+  <!-- Donut + Growth table -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+    <div class="card">
+      <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:20px">Allocation</div>
+      <div style="display:flex;gap:24px;align-items:center">
+        <canvas id="donut" width="160" height="160" style="width:160px;flex-shrink:0"></canvas>
+        <div id="donutLegend" style="display:flex;flex-direction:column;gap:12px"></div>
+      </div>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <table>
+        <thead><tr><th>Period</th><th>Net Worth</th><th>Change</th></tr></thead>
+        <tbody id="growthBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Breakdown -->
+  <div class="sec"><div class="sec-title">Asset Breakdown</div><div class="sec-line"></div><div class="sec-note">latest snapshot</div></div>
+  <div class="bk-grid">
+    <div class="card"><div class="bk-title" style="color:var(--cash)">Cash & Savings</div><div id="bk-cash"></div></div>
+    <div class="card"><div class="bk-title" style="color:var(--equity)">Equity</div><div id="bk-equity"></div></div>
+    <div class="card"><div class="bk-title" style="color:var(--debt)">Debt & Fixed</div><div id="bk-debt"></div></div>
+  </div>
+
+  <!-- Entry panel -->
+  <div class="sec"><div class="sec-title">Log Data</div><div class="sec-line"></div><span style="font-size:10px;color:#c8f060;letter-spacing:1px">● synced to Google Sheets</span></div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="entry-tabs">
+      <button class="entry-tab active" onclick="switchEntryTab('snapshot',this)">📸 Log Snapshot</button>
+      <button class="entry-tab" onclick="switchEntryTab('sip',this)">🔁 SIP Tracker</button>
+    </div>
+    <div class="entry-body">
+
+      <!-- Snapshot form -->
+      <div class="entry-sec active" id="es-snapshot">
+        <div class="fdivider" style="margin-top:0">Snapshot Label</div>
+        <input class="finp" id="f-label" type="text" placeholder="e.g. Aug '26" style="width:220px" oninput="livePreview()">
+
+        <div class="fdivider"><span style="color:var(--cash)">●</span> Cash & Savings</div>
+        <div class="fgrid">
+          <div><label class="flabel">HDFC (₹)</label><input class="finp c" id="f-hdfc" type="number" placeholder="0" oninput="livePreview()"></div>
+          <div><label class="flabel">ICICI (₹)</label><input class="finp c" id="f-icici" type="number" placeholder="0" oninput="livePreview()"></div>
+          <div><label class="flabel">SBI (₹)</label><input class="finp c" id="f-sbi" type="number" placeholder="0" oninput="livePreview()"></div>
+          <div><label class="flabel">Food Wallet (₹)</label><input class="finp c" id="f-food" type="number" placeholder="0" oninput="livePreview()"></div>
+        </div>
+
+        <div class="fdivider"><span style="color:var(--equity)">●</span> Equity</div>
+        <div class="fgrid">
+          <div><label class="flabel">MF Invested (₹)</label><input class="finp e" id="f-mfInv" type="number" placeholder="0" oninput="livePreview()"></div>
+          <div><label class="flabel">MF Gains (₹)</label><input class="finp e" id="f-mfGain" type="number" placeholder="0" oninput="livePreview()"></div>
+          <div><label class="flabel">Stocks (₹)</label><input class="finp e" id="f-stocks" type="number" placeholder="0" oninput="livePreview()"></div>
+        </div>
+
+        <div class="fdivider"><span style="color:var(--debt)">●</span> Debt & Fixed</div>
+        <div class="fgrid">
+          <div><label class="flabel">EPF (₹)</label><input class="finp d" id="f-epf" type="number" placeholder="0" oninput="livePreview()"></div>
+          <div><label class="flabel">Gold (₹)</label><input class="finp d" id="f-gold" type="number" placeholder="0" oninput="livePreview()"></div>
+          <div><label class="flabel">FD (₹)</label><input class="finp d" id="f-fd" type="number" placeholder="0" oninput="livePreview()"></div>
+          <div><label class="flabel">MF Debt (₹)</label><input class="finp d" id="f-mfDebt" type="number" placeholder="0" oninput="livePreview()"></div>
+          <div><label class="flabel">PPF (₹)</label><input class="finp d" id="f-ppf" type="number" placeholder="0" oninput="livePreview()"></div>
+          <div><label class="flabel">Given/Santosh (₹)</label><input class="finp d" id="f-given" type="number" placeholder="0" oninput="livePreview()"></div>
+          <div><label class="flabel">Avinake (₹)</label><input class="finp d" id="f-avinake" type="number" placeholder="0" oninput="livePreview()"></div>
+          <div><label class="flabel">Flat + Misc (₹)</label><input class="finp d" id="f-misc" type="number" placeholder="0" oninput="livePreview()"></div>
+        </div>
+
+        <div class="preview">
+          <div><div class="prev-label">Net Worth</div><div class="prev-val" id="p-nw">—</div></div>
+          <div><div class="prev-label">Cash</div><div class="prev-val" id="p-cash">—</div></div>
+          <div><div class="prev-label">Equity</div><div class="prev-val" id="p-eq">—</div></div>
+          <div><div class="prev-label">Debt</div><div class="prev-val" id="p-dt">—</div></div>
+          <div><div class="prev-label">vs Last</div><div class="prev-val" id="p-delta">—</div></div>
+        </div>
+        <div class="action-row">
+          <button class="btn-primary" id="saveSnapBtn" onclick="saveSnapshot()">→ Save to Sheets</button>
+          <button class="btn-sec" onclick="clearSnapForm()">Clear</button>
+        </div>
+      </div>
+
+      <!-- SIP form -->
+      <div class="entry-sec" id="es-sip">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:18px">Monthly SIPs — changes sync to Google Sheets instantly.</div>
+        <div id="sipList"></div>
+        <div class="fdivider">Add New SIP</div>
+        <div class="sip-add">
+          <div><label class="flabel">Fund Name</label><input class="finp e" id="s-name" type="text" placeholder="e.g. Mirae Large Cap"></div>
+          <div><label class="flabel">Monthly (₹)</label><input class="finp e" id="s-amt" type="number" placeholder="5000"></div>
+          <div>
+            <label class="flabel">SIP Date</label>
+            <select class="finp e" id="s-day">${Array.from({length:28},(_,i)=>`<option value="${i+1}">${i+1}</option>`).join('')}</select>
+          </div>
+          <div>
+            <label class="flabel">Type</label>
+            <select class="finp e" id="s-type">
+              <option>Equity MF</option><option>Debt MF</option><option>Index Fund</option><option>ELSS</option><option>Stocks</option><option>Other</option>
+            </select>
+          </div>
+          <div><label class="flabel" style="opacity:0">_</label><button class="btn-primary" onclick="addSIP()">+ Add</button></div>
+        </div>
+        <div class="sip-summary">
+          <div class="sip-card"><div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Monthly Total</div><div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:var(--equity)" id="sip-mo">₹0</div></div>
+          <div class="sip-card"><div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Yearly</div><div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:var(--equity)" id="sip-yr">₹0</div></div>
+          <div class="sip-card"><div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Active SIPs</div><div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:var(--cash)" id="sip-ct">0</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- History -->
+  <div class="sec"><div class="sec-title">Snapshot History</div><div class="sec-line"></div><div class="sec-note">click × to delete</div></div>
+  <div class="snap-chips" id="snapChips"></div>
+
+</div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+let snapshots = [], sips = [], authHeader = "", chartMode = "networth";
+
+const fmtL = v => v >= 10000000 ? "₹"+(v/10000000).toFixed(2)+"Cr" : "₹"+(v/100000).toFixed(2)+"L";
+const gv = id => parseFloat(document.getElementById(id).value)||0;
+const el = id => document.getElementById(id);
+
+// ── Loading bar ───────────────────────────────────────────────────────────────
+function setLoad(pct) { el("loadingBar").style.width = pct + "%"; if(pct>=100) setTimeout(()=>el("loadingBar").style.width="0%",400); }
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function toast(msg, type="ok") {
+  const t = el("toast");
+  t.textContent = msg; t.className = "show " + type;
+  clearTimeout(t._t); t._t = setTimeout(()=>t.className="", 3200);
+}
+
+// ── Login ─────────────────────────────────────────────────────────────────────
+async function doLogin() {
+  const user = el("loginUser").value.trim();
+  const pass = el("loginPass").value;
+  if (!user || !pass) { el("loginErr").textContent = "Enter username and password"; return; }
+  authHeader = "Basic " + btoa(user + ":" + pass);
+  el("loginErr").textContent = "Signing in…";
+  try {
+    setLoad(30);
+    const res = await apiFetch({ action:"read" });
+    if (!res.ok) { el("loginErr").textContent = "Wrong username or password"; authHeader=""; setLoad(100); return; }
+    const data = await res.json();
+    setLoad(80);
+    loadData(data);
+    el("loginOverlay").style.display = "none";
+    el("mainApp").style.display = "block";
+    setLoad(100);
+  } catch(e) {
+    el("loginErr").textContent = "Connection error — try again";
+    setLoad(100);
+  }
+}
+el("loginPass").addEventListener("keydown", e => { if(e.key==="Enter") doLogin(); });
+
+// ── API calls (through Netlify function) ──────────────────────────────────────
+function apiFetch(body) {
+  return fetch("/.netlify/functions/sheets", {
+    method: "POST",
+    headers: { "Content-Type":"application/json", "Authorization": authHeader },
+    body: JSON.stringify(body),
+  });
+}
+
+async function apiWrite(tab, data) {
+  el("syncStatus").textContent = "● syncing…";
+  el("syncStatus").style.color = "#60c8f0";
+  try {
+    const res = await apiFetch({ action:"write", tab, data });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error||"Write failed");
+    el("syncStatus").textContent = "✓ synced";
+    el("syncStatus").style.color = "#c8f060";
+    setTimeout(()=>{ el("syncStatus").textContent=""; }, 3000);
+  } catch(e) {
+    el("syncStatus").textContent = "⚠ sync error";
+    el("syncStatus").style.color = "#f06060";
+    toast("Sync error: " + e.message, "err");
+  }
+}
+
+// ── Data loading ──────────────────────────────────────────────────────────────
+function loadData(data) {
+  // Parse snapshots from sheet rows
+  snapshots = (data.snapshots||[]).map(r => ({
+    label:    r.label,
+    netWorth: +r.netWorth||0,
+    cash:     +r.cash||0,
+    equity:   +r.equity||0,
+    debt:     +r.debt||0,
+    detail: {
+      hdfc:+r.hdfc||0, icici:+r.icici||0, sbi:+r.sbi||0, food:+r.food||0,
+      mfInv:+r.mfInv||0, mfGain:+r.mfGain||0, stocks:+r.stocks||0,
+      epf:+r.epf||0, gold:+r.gold||0, fd:+r.fd||0, mfDebt:+r.mfDebt||0,
+      ppf:+r.ppf||0, given:+r.given||0, avinake:+r.avinake||0, misc:+r.misc||0,
+    }
+  })).filter(s => s.label && s.netWorth > 0);
+
+  // If sheet is empty (first time), seed with historical data
+  if (snapshots.length === 0) {
+    snapshots = SEED_SNAPSHOTS;
+  }
+
+  sips = (data.sips||[]).map(r => ({
+    name: r.name, amt: +r.amt||0, day: +r.day||1, type: r.type, active: r.active==="TRUE"
+  })).filter(s => s.name);
+
+  if (sips.length === 0) sips = SEED_SIPS;
+
+  renderAll();
+}
+
+// ── Seed data (used only on first launch if sheet is empty) ──────────────────
+const SEED_SNAPSHOTS = [
+  {label:"May '23",netWorth:2630000,cash:530000,debt:1583000,equity:332000,detail:{hdfc:328047,icici:201439,sbi:0,food:6184,mfInv:331483,mfGain:0,stocks:0,epf:400000,gold:0,fd:800000,mfDebt:0,ppf:382052,given:0,avinake:180000,misc:0}},
+  {label:"Jan '24",netWorth:3832000,cash:522000,debt:1972000,equity:745000,detail:{hdfc:500000,icici:9546,sbi:12000,food:3300,mfInv:580000,mfGain:150000,stocks:15000,epf:555573,gold:234000,fd:800000,mfDebt:0,ppf:382052,given:0,avinake:350000,misc:0}},
+  {label:"Jun '24",netWorth:4362000,cash:653000,debt:1363000,equity:954000,detail:{hdfc:600000,icici:47670,sbi:5151,food:3240,mfInv:725463,mfGain:200000,stocks:28000,epf:708834,gold:234000,fd:800000,mfDebt:0,ppf:419295,given:200000,avinake:350000,misc:0}},
+  {label:"Jan '25",netWorth:5365000,cash:1076000,debt:2329000,equity:1398000,detail:{hdfc:1005931,icici:70000,sbi:0,food:7000,mfInv:1029000,mfGain:302916,stocks:66000,epf:875000,gold:234000,fd:800000,mfDebt:0,ppf:419295,given:150000,avinake:65000,misc:0}},
+  {label:"May '25",netWorth:5947000,cash:597000,debt:2458000,equity:1641000,detail:{hdfc:491796,icici:38625,sbi:66300,food:1770,mfInv:1250000,mfGain:324212,stocks:66000,epf:987000,gold:371000,fd:900000,mfDebt:350000,ppf:450000,given:185000,avinake:125000,misc:0}},
+  {label:"Aug '25",netWorth:6632000,cash:550000,debt:2894000,equity:1936000,detail:{hdfc:393089,icici:90179,sbi:66300,food:1770,mfInv:1515000,mfGain:354885,stocks:66000,epf:1150000,gold:444000,fd:900000,mfDebt:550000,ppf:450000,given:185000,avinake:125000,misc:0}},
+  {label:"Nov '25",netWorth:7391000,cash:700000,debt:3785000,equity:2287000,detail:{hdfc:560000,icici:80000,sbi:60000,food:5367,mfInv:1782000,mfGain:340000,stocks:165000,epf:1219000,gold:666000,fd:900000,mfDebt:550000,ppf:450000,given:141000,avinake:125000,misc:7000}},
+  {label:"Feb '26",netWorth:8230000,cash:872000,debt:3815000,equity:2978000,detail:{hdfc:726000,icici:113000,sbi:33000,food:2500,mfInv:2044000,mfGain:254000,stocks:680000,epf:1250000,gold:765000,fd:700000,mfDebt:650000,ppf:450000,given:390000,avinake:125000,misc:47000}},
+];
+const SEED_SIPS = [
+  {name:"Mirae Equity",amt:5000,day:5,type:"Equity MF",active:true},
+  {name:"Nifty Index",amt:2000,day:15,type:"Index Fund",active:true},
+];
+
+// ── Render everything ─────────────────────────────────────────────────────────
+function renderAll() {
+  renderHero(); renderChart(); renderDonut(); renderGrowthTable();
+  renderBreakdown(); renderSIPs(); renderChips();
+  const last = snapshots[snapshots.length-1];
+  el("lastUpdated").textContent = "Last updated: " + (last?.label||"—");
+}
+
+function renderHero() {
+  const last = snapshots[snapshots.length-1];
+  const prev = snapshots[snapshots.length-2];
+  if (!last) return;
+  el("h-nw").textContent = fmtL(last.netWorth);
+  el("h-eq").textContent = fmtL(last.equity);
+  el("h-dt").textContent = fmtL(last.debt);
+  el("h-eq-pct").textContent = (last.equity/last.netWorth*100).toFixed(1)+"% of portfolio";
+  el("h-dt-pct").textContent = (last.debt/last.netWorth*100).toFixed(1)+"% of portfolio";
+  if (prev) {
+    const pct = ((last.netWorth-prev.netWorth)/prev.netWorth*100).toFixed(1);
+    const pill = el("h-pill");
+    pill.style.display = "inline-flex";
+    pill.textContent = (pct>=0?"↑ +":"↓ ")+pct+"% from "+prev.label;
+  }
+}
+
+// ── Chart (canvas, no library) ────────────────────────────────────────────────
+function renderChart() {
+  const canvas = el("mainChart"); if(!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const dpr = window.devicePixelRatio||1;
+  const W = canvas.offsetWidth||900, H = 240;
+  canvas.width = W*dpr; canvas.height = H*dpr; ctx.scale(dpr,dpr);
+  const PAD = {top:20,right:20,bottom:36,left:62};
+  const cw = W-PAD.left-PAD.right, ch = H-PAD.top-PAD.bottom;
+  const n = snapshots.length; if(n<2) return;
+
+  let datasets = [];
+  if (chartMode==="networth") {
+    datasets=[{vals:snapshots.map(s=>s.netWorth/100000),color:"#c8f060",fill:"rgba(200,240,96,0.06)"}];
+  } else if (chartMode==="stacked") {
+    datasets=[
+      {vals:snapshots.map(s=>(s.netWorth)/100000),color:"#f0c860",fill:"rgba(240,200,96,0.12)"},
+      {vals:snapshots.map(s=>(s.equity+s.cash)/100000),color:"#c8f060",fill:"rgba(200,240,96,0.12)"},
+      {vals:snapshots.map(s=>s.cash/100000),color:"#60f0c8",fill:"rgba(96,240,200,0.12)"},
+    ];
+  } else {
+    datasets=[{vals:snapshots.map((s,i)=>i===0?0:+((s.netWorth-snapshots[i-1].netWorth)/snapshots[i-1].netWorth*100).toFixed(1)),color:"#60c8f0",fill:"rgba(96,200,240,0.06)"}];
+  }
+
+  const allV = datasets.flatMap(d=>d.vals);
+  const minV = Math.min(...allV)*(chartMode==="growth"?1.4:0.9), maxV = Math.max(...allV)*1.05;
+  const xP = i => PAD.left+(i/(n-1))*cw;
+  const yP = v => PAD.top+ch-((v-minV)/(maxV-minV))*ch;
+
+  // Grid
+  for(let i=0;i<=4;i++){
+    const y=PAD.top+(ch/4)*i;
+    ctx.strokeStyle="rgba(255,255,255,0.04)"; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(PAD.left,y); ctx.lineTo(PAD.left+cw,y); ctx.stroke();
+    const val=maxV-(maxV-minV)*(i/4);
+    ctx.fillStyle="#555570"; ctx.font="10px 'DM Mono',monospace"; ctx.textAlign="right";
+    ctx.fillText(chartMode==="growth"?val.toFixed(1)+"%":"₹"+val.toFixed(0)+"L", PAD.left-8, y+4);
+  }
+
+  datasets.forEach(ds=>{
+    ctx.beginPath(); ctx.moveTo(xP(0),yP(ds.vals[0]));
+    ds.vals.forEach((v,i)=>{if(i>0)ctx.lineTo(xP(i),yP(v));});
+    ctx.lineTo(xP(n-1),PAD.top+ch); ctx.lineTo(xP(0),PAD.top+ch); ctx.closePath();
+    ctx.fillStyle=ds.fill; ctx.fill();
+    ctx.beginPath(); ctx.moveTo(xP(0),yP(ds.vals[0]));
+    ds.vals.forEach((v,i)=>{if(i>0)ctx.lineTo(xP(i),yP(v));});
+    ctx.strokeStyle=ds.color; ctx.lineWidth=2.5; ctx.lineJoin="round"; ctx.stroke();
+    ds.vals.forEach((v,i)=>{
+      ctx.beginPath(); ctx.arc(xP(i),yP(v),4,0,Math.PI*2);
+      ctx.fillStyle="#0a0a0f"; ctx.fill();
+      ctx.strokeStyle=ds.color; ctx.lineWidth=2; ctx.stroke();
+    });
+  });
+
+  ctx.fillStyle="#555570"; ctx.font="10px 'DM Mono',monospace"; ctx.textAlign="center";
+  snapshots.forEach((s,i)=>ctx.fillText(s.label,xP(i),H-8));
+}
+
+function setChartMode(mode, btn) {
+  chartMode=mode;
+  document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active"));
+  btn.classList.add("active");
+  renderChart();
+}
+
+function renderDonut() {
+  const last = snapshots[snapshots.length-1]; if(!last) return;
+  const canvas = el("donut");
+  const ctx = canvas.getContext("2d");
+  const dpr = window.devicePixelRatio||1, S=160;
+  canvas.width=S*dpr; canvas.height=S*dpr; ctx.scale(dpr,dpr);
+  const total=last.cash+last.equity+last.debt, cx=S/2, cy=S/2, r=62, ir=44;
+  const segs=[{v:last.debt,c:"rgba(240,200,96,0.85)"},{v:last.equity,c:"rgba(200,240,96,0.85)"},{v:last.cash,c:"rgba(96,240,200,0.85)"}];
+  let angle=-Math.PI/2;
+  segs.forEach(s=>{
+    const sw=(s.v/total)*Math.PI*2;
+    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.arc(cx,cy,r,angle,angle+sw); ctx.closePath();
+    ctx.fillStyle=s.c; ctx.fill(); angle+=sw;
+  });
+  ctx.beginPath(); ctx.arc(cx,cy,ir,0,Math.PI*2); ctx.fillStyle="#111118"; ctx.fill();
+
+  el("donutLegend").innerHTML = [["Debt","#f0c860",last.debt],["Equity","#c8f060",last.equity],["Cash","#60f0c8",last.cash]].map(([lbl,clr,v])=>`
+    <div style="display:flex;align-items:center;gap:8px">
+      <div style="width:9px;height:9px;border-radius:2px;background:${clr};flex-shrink:0"></div>
+      <span style="font-size:11px;color:#666680">${lbl}</span>
+      <span style="margin-left:auto;font-size:12px;color:#e8e8f0">${(v/total*100).toFixed(1)}%</span>
+    </div>`).join("");
+}
+
+function renderGrowthTable() {
+  el("growthBody").innerHTML = snapshots.map((s,i)=>{
+    const p=snapshots[i-1];
+    const pct=p?((s.netWorth-p.netWorth)/p.netWorth*100).toFixed(1):null;
+    return `<tr>
+      <td>${s.label}</td>
+      <td>${fmtL(s.netWorth)}</td>
+      <td>${pct!==null?`<span class="badge ${+pct>=0?"up":"dn"}">${+pct>=0?"+":""}${pct}%</span>`:`<span style="color:#444460">—</span>`}</td>
+    </tr>`;
+  }).join("");
+}
+
+function renderBreakdown() {
+  const last = snapshots[snapshots.length-1]; if(!last) return;
+  const d = last.detail||{};
+  const bk = (items, color, elId) => {
+    const total=items.reduce((a,b)=>a+b.v,0)||1;
+    el(elId).innerHTML=items.filter(i=>i.v>0).map(item=>`
+      <div class="bk-row">
+        <div class="bk-name">${item.n}</div>
+        <div class="bk-bar-wrap"><div class="bk-bar" style="width:${(item.v/total*100).toFixed(0)}%;background:${color}"></div></div>
+        <div class="bk-amt">${fmtL(item.v)}</div>
+      </div>`).join("");
+  };
+  bk([{n:"HDFC",v:d.hdfc||0},{n:"ICICI",v:d.icici||0},{n:"SBI",v:d.sbi||0},{n:"Food Wallet",v:d.food||0}],"var(--cash)","bk-cash");
+  bk([{n:"MF Equity",v:d.mfInv||0},{n:"MF Gains",v:d.mfGain||0},{n:"Stocks",v:d.stocks||0}],"var(--equity)","bk-equity");
+  bk([{n:"EPF",v:d.epf||0},{n:"Gold",v:d.gold||0},{n:"FD",v:d.fd||0},{n:"MF Debt",v:d.mfDebt||0},{n:"PPF",v:d.ppf||0},{n:"Given",v:d.given||0},{n:"Avinake",v:d.avinake||0},{n:"Misc",v:d.misc||0}],"var(--debt)","bk-debt");
+}
+
+function renderSIPs() {
+  const active=sips.filter(s=>s.active), mo=active.reduce((a,s)=>a+s.amt,0);
+  el("sip-mo").textContent="₹"+mo.toLocaleString("en-IN");
+  el("sip-yr").textContent="₹"+(mo*12).toLocaleString("en-IN");
+  el("sip-ct").textContent=active.length;
+  el("sipList").innerHTML=sips.length===0
+    ?`<div style="font-size:12px;color:#444460;padding:12px 0">No SIPs yet.</div>`
+    :sips.map((s,i)=>`
+      <div class="sip-row">
+        <div style="font-size:12px">${s.name} <span style="font-size:10px;color:#666680;margin-left:6px">${s.type}</span></div>
+        <div style="font-size:12px;color:var(--equity)">₹${s.amt.toLocaleString("en-IN")}/mo</div>
+        <div style="font-size:11px;color:#666680">on ${s.day}th</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="width:7px;height:7px;border-radius:50%;background:${s.active?"#c8f060":"#444460"}"></div>
+          <span style="font-size:10px;color:${s.active?"#c8f060":"#666680"}">${s.active?"Active":"Paused"}</span>
+          <button onclick="toggleSIP(${i})" style="background:none;border:none;font-size:10px;color:#444460;font-family:'DM Mono',monospace;cursor:pointer">${s.active?"pause":"resume"}</button>
+        </div>
+        <button onclick="deleteSIP(${i})" style="background:none;border:none;color:#333350;font-size:13px;cursor:pointer">✕</button>
+      </div>`).join("");
+}
+
+function renderChips() {
+  el("snapChips").innerHTML=snapshots.map((s,i)=>`
+    <div class="snap-chip">
+      <div><div style="font-size:11px;color:#c8f060;margin-bottom:2px">${s.label}</div><div style="font-size:13px;font-family:'Syne',sans-serif;font-weight:700">${fmtL(s.netWorth)}</div></div>
+      ${snapshots.length>1?`<button onclick="deleteSnapshot(${i})" style="background:none;border:none;color:#333350;font-size:13px;cursor:pointer">✕</button>`:""}
+    </div>`).join("");
+}
+
+// ── Snapshot form ─────────────────────────────────────────────────────────────
+function livePreview() {
+  const cash=gv("f-hdfc")+gv("f-icici")+gv("f-sbi")+gv("f-food");
+  const eq=gv("f-mfInv")+gv("f-mfGain")+gv("f-stocks");
+  const dt=gv("f-epf")+gv("f-gold")+gv("f-fd")+gv("f-mfDebt")+gv("f-ppf")+gv("f-given")+gv("f-avinake")+gv("f-misc");
+  const nw=cash+eq+dt;
+  const last=snapshots[snapshots.length-1];
+  const delta=nw>0?((nw-last.netWorth)/last.netWorth*100).toFixed(1):null;
+
+  const set=(id,val,live)=>{ el(id).textContent=val; el(id).className="prev-val"+(live?" live":""); };
+  set("p-nw", nw>0?fmtL(nw):"—", nw>0);
+  set("p-cash", cash>0?fmtL(cash):"—", cash>0);
+  set("p-eq", eq>0?fmtL(eq):"—", eq>0);
+  set("p-dt", dt>0?fmtL(dt):"—", dt>0);
+  if(delta!==null&&nw>0){ el("p-delta").textContent=(+delta>=0?"+":"")+delta+"%"; el("p-delta").style.color=+delta>=0?"#c8f060":"#f06060"; el("p-delta").className="prev-val live"; }
+  else { el("p-delta").textContent="—"; el("p-delta").style.color=""; el("p-delta").className="prev-val"; }
+}
+
+async function saveSnapshot() {
+  const label=el("f-label").value.trim();
+  if(!label){toast("Enter a snapshot label","err");return;}
+  const cash=gv("f-hdfc")+gv("f-icici")+gv("f-sbi")+gv("f-food");
+  const equity=gv("f-mfInv")+gv("f-mfGain")+gv("f-stocks");
+  const debt=gv("f-epf")+gv("f-gold")+gv("f-fd")+gv("f-mfDebt")+gv("f-ppf")+gv("f-given")+gv("f-avinake")+gv("f-misc");
+  const nw=cash+equity+debt;
+  if(nw===0){toast("Enter at least one asset value","err");return;}
+  const detail={hdfc:gv("f-hdfc"),icici:gv("f-icici"),sbi:gv("f-sbi"),food:gv("f-food"),mfInv:gv("f-mfInv"),mfGain:gv("f-mfGain"),stocks:gv("f-stocks"),epf:gv("f-epf"),gold:gv("f-gold"),fd:gv("f-fd"),mfDebt:gv("f-mfDebt"),ppf:gv("f-ppf"),given:gv("f-given"),avinake:gv("f-avinake"),misc:gv("f-misc")};
+  const snap={label,netWorth:nw,cash,equity,debt,detail};
+  snapshots.push(snap);
+  renderAll();
+  clearSnapForm();
+  toast("✓ Snapshot saved to Google Sheets!");
+  await apiWrite("Snapshots", snap);
+}
+
+function clearSnapForm() {
+  ["f-label","f-hdfc","f-icici","f-sbi","f-food","f-mfInv","f-mfGain","f-stocks","f-epf","f-gold","f-fd","f-mfDebt","f-ppf","f-given","f-avinake","f-misc"].forEach(id=>{ const e=el(id); if(e) e.value=""; });
+  ["p-nw","p-cash","p-eq","p-dt","p-delta"].forEach(id=>{ el(id).textContent="—"; el(id).className="prev-val"; });
+}
+
+async function deleteSnapshot(i) {
+  if(snapshots.length<=1){toast("Can't delete the only snapshot","err");return;}
+  snapshots.splice(i,1); renderAll();
+  toast("Snapshot deleted");
+  await apiWrite("deleteSnapshot",{snapshots});
+}
+
+// ── SIP actions ───────────────────────────────────────────────────────────────
+async function addSIP() {
+  const name=el("s-name").value.trim(), amt=parseFloat(el("s-amt").value);
+  if(!name||isNaN(amt)||amt<=0){toast("Enter fund name and amount","err");return;}
+  sips.push({name,amt,day:parseInt(el("s-day").value),type:el("s-type").value,active:true});
+  el("s-name").value=""; el("s-amt").value="";
+  renderSIPs(); toast("✓ SIP saved!");
+  await apiWrite("SIPs",{sips});
+}
+async function toggleSIP(i){sips[i].active=!sips[i].active;renderSIPs();await apiWrite("SIPs",{sips});}
+async function deleteSIP(i){sips.splice(i,1);renderSIPs();toast("SIP deleted");await apiWrite("SIPs",{sips});}
+
+// ── Entry tab switch ──────────────────────────────────────────────────────────
+function switchEntryTab(tab, btn) {
+  document.querySelectorAll(".entry-tab").forEach(b=>b.classList.remove("active"));
+  btn.classList.add("active");
+  document.querySelectorAll(".entry-sec").forEach(s=>s.classList.remove("active"));
+  el("es-"+tab).classList.add("active");
+}
+
+// ── Resize chart ──────────────────────────────────────────────────────────────
+window.addEventListener("resize", ()=>{ if(snapshots.length) renderChart(); });
+</script>
+</body>
+</html>

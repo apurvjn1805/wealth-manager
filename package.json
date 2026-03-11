@@ -1,0 +1,18 @@
+{
+  "name": "wealth-tracker",
+  "version": "1.0.0",
+  "description": "Angular personal finance dashboard with Google Sheets backend",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "npm --prefix frontend run start",
+    "build": "npm --prefix frontend run build",
+    "test": "npm --prefix frontend run test"
+  },
+  "devDependencies": {
+    "netlify-cli": "^24.0.1"
+  }
+}
