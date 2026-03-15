@@ -8,7 +8,7 @@ const OAUTH_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const OAUTH_REFRESH_TOKEN = process.env.GOOGLE_REFRESH_TOKEN;
 
 const BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
-const ALLOWED_TABS = new Set(['Snapshots', 'SIPs', 'deleteSnapshot']);
+const ALLOWED_TABS = new Set(['Snapshots', 'SIPs', 'deleteSnapshot', 'fullSync']);
 const PROD = process.env.NODE_ENV === 'production';
 const headers = {
   'Content-Type': 'application/json',
@@ -43,6 +43,15 @@ function checkAuth(event) {
   const decoded = Buffer.from(auth.slice(6), 'base64').toString();
   const [user, pass] = decoded.split(':');
   return user === process.env.AUTH_USER && pass === process.env.AUTH_PASS;
+}
+
+async function getSheetId(title, token) {
+  const res = await fetch(`${BASE}/${SHEET_ID}?key=${API_KEY}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  const data = await res.json();
+  const sheet = data.sheets?.find(s => s.properties.title === title);
+  return sheet ? sheet.properties.sheetId : 0;
 }
 
 function parseBody(event) {
@@ -99,11 +108,11 @@ function pickHeaderRow(values, aliases) {
   return { headers: values[headerIndex] || [], rows: values.slice(headerIndex + 1) };
 }
 
-function normalizeNumeric(value) {
-  if (typeof value === 'string') {
-    return value.replace(/,/g, '').trim();
-  }
-  return value;
+function toNumeric(value) {
+  if (value === undefined || value === null || value === '') return 0;
+  if (typeof value === 'number') return value;
+  const cleaned = String(value).replace(/[^0-9.-]/g, '');
+  return parseFloat(cleaned) || 0;
 }
 
 function parseGrid(grid, aliases) {
@@ -153,38 +162,47 @@ export async function handler(event) {
 
   try {
     if (action === 'read') {
-      const ranges = ['Snapshots!A:Z', 'SIPs!A:Z'].join('&ranges=');
-      const url = `${BASE}/${SHEET_ID}/values:batchGet?ranges=${ranges}&key=${API_KEY}`;
+      const ranges = ['Snapshots!A:ZZ', 'SIPs!A:ZZ'].join('&ranges=');
+      const url = `${BASE}/${SHEET_ID}/values:batchGet?ranges=${ranges}&key=${API_KEY}&majorDimension=COLUMNS`;
       const res = await fetch(url);
       const json = await res.json();
       if (json.error) throw new Error(json.error.message || 'Sheets read failed');
 
-      const snapshotAliases = {
-        label: 'label',
-        networth: 'netWorth',
-        cash: 'cash',
-        equity: 'equity',
-        debt: 'debt',
-        hdfc: 'hdfc',
-        icici: 'icici',
-        sbi: 'sbi',
-        food: 'food',
-        foodwallet: 'food',
-        mfinv: 'mfInv',
-        mfinvested: 'mfInv',
-        mfgain: 'mfGain',
-        mfgains: 'mfGain',
-        stocks: 'stocks',
-        epf: 'epf',
-        gold: 'gold',
-        fd: 'fd',
-        mfdebt: 'mfDebt',
-        ppf: 'ppf',
-        given: 'given',
-        givensantosh: 'given',
-        avinake: 'avinake',
-        misc: 'misc',
-      };
+      const snapshotColumns = json.valueRanges?.[0]?.values || [];
+      const snapshots = [];
+
+      // Data starts from column index 3 (Column D)
+      for (let i = 3; i < snapshotColumns.length; i++) {
+        const col = snapshotColumns[i];
+        if (!col || !col[1]) continue;
+
+        snapshots.push({
+          label: col[1] || 'N/A',
+          netWorth: toNumeric(col[2]),
+          cash: toNumeric(col[3]),
+          debt: toNumeric(col[4]),
+          equity: toNumeric(col[5]),
+          detail: {
+            sbi: toNumeric(col[8]),
+            icici: toNumeric(col[9]),
+            hdfc: toNumeric(col[10]),
+            food: toNumeric(col[11]),
+            mfInv: toNumeric(col[12]),
+            mfGain: toNumeric(col[13]),
+            stocks: toNumeric(col[14]),
+            fd: toNumeric(col[15]),
+            gold: toNumeric(col[16]),
+            mfDebt: toNumeric(col[17]),
+            ppf: toNumeric(col[18]),
+            epf: toNumeric(col[19]),
+            given: toNumeric(col[21]),
+            flatDeposit: toNumeric(col[22]),
+            misc: toNumeric(col[23]),
+            avinake: toNumeric(col[24]),
+          }
+        });
+      }
+
       const sipAliases = {
         name: 'name',
         fundname: 'name',
@@ -197,12 +215,18 @@ export async function handler(event) {
         activetruefalse: 'active',
       };
 
+      // Re-fetch SIPs with standard dimension if needed, or parse from columns
+      // For now, let's keep it simple and assume the UI wants rows for SIPs
+      const sipUrl = `${BASE}/${SHEET_ID}/values/SIPs!A:Z?key=${API_KEY}`;
+      const sipRes = await fetch(sipUrl);
+      const sipGrid = await sipRes.json();
+
       return {
         statusCode: 200,
         headers,
         body: JSON.stringify({
-          snapshots: parseGrid(json.valueRanges?.[0], snapshotAliases),
-          sips: parseGrid(json.valueRanges?.[1], sipAliases),
+          snapshots: snapshots.reverse(), // Reverse to keep chronological order if needed by UI
+          sips: parseGrid(sipGrid, sipAliases),
         }),
       };
     }
@@ -216,51 +240,116 @@ export async function handler(event) {
     if (tab === 'Snapshots') {
       if (!validSnapshot(data)) return fail(400, 'Invalid snapshot payload');
       const d = data.detail || {};
-      const row = [
-        data.label, data.netWorth, data.cash, data.equity, data.debt,
-        d.hdfc || 0, d.icici || 0, d.sbi || 0, d.food || 0,
-        d.mfInv || 0, d.mfGain || 0, d.stocks || 0,
-        d.epf || 0, d.gold || 0, d.fd || 0, d.mfDebt || 0, d.ppf || 0, d.given || 0, d.avinake || 0, d.misc || 0,
+
+      const values = [[
+        '', // Row 1 (Year)
+        data.label, // Row 2 (Date)
+        data.netWorth, // Row 3
+        data.cash, // Row 4
+        data.debt, // Row 5
+        data.equity, // Row 6
+        '', // Row 7
+        '|| Details below ||', // Row 8
+        d.sbi || 0, // Row 9
+        d.icici || 0, // Row 10
+        d.hdfc || 0, // Row 11
+        d.food || 0, // Row 12
+        d.mfInv || 0, // Row 13
+        d.mfGain || 0, // Row 14
+        d.stocks || 0, // Row 15
+        d.fd || 0, // Row 16
+        d.gold || 0, // Row 17
+        d.mfDebt || 0, // Row 18
+        d.ppf || 0, // Row 19
+        d.epf || 0, // Row 20
+        0, // Row 21 (Santosh)
+        d.given || 0, // Row 22
+        d.flatDeposit || 0, // Row 23
+        d.misc || 0, // Row 24
+        d.avinake || 0, // Row 25
+      ]];
+
+      const batchUpdateUrl = `${BASE}/${SHEET_ID}:batchUpdate`;
+      const sheetId = await getSheetId('Snapshots', token);
+
+      // Ensure labels exist in Column C
+      const labels = [
+        [''], ['Type'], ['Net Worth'], ['CASH'], ['Debt Inv.'], ['Equity Inv.'], [''], ['|| Details below ||'],
+        ['SBI'], ['ICICI'], ['HDFC'], ['Food Wallet'], ['MF Equity (Inv. Amount)'], ['MF Gains'], ['Stocks'],
+        ['FD'], ['Gold'], ['MF Debt'], ['PPF'], ['EPF (UAN 101619682423)'], ['Santosh'], ['Given'], ['Flat deposit'], ['Misc.'], ['Avinake']
       ];
-      const res = await fetch(
-        `${BASE}/${SHEET_ID}/values/Snapshots!A:T:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
-        { method: 'POST', headers: authHeader, body: JSON.stringify({ values: [row] }) },
-      );
-      const json = await res.json();
-      if (json.error) throw new Error(json.error.message || 'Snapshots write failed');
-      return { statusCode: 200, headers, body: JSON.stringify({ ok: true }) };
-    }
-
-    if (tab === 'SIPs') {
-      if (!validSipPayload(data)) return fail(400, 'Invalid SIP payload');
-      const rows = data.sips.map((s) => [s.name, s.amt, s.day, s.type, s.active ? 'TRUE' : 'FALSE']);
-      await fetch(`${BASE}/${SHEET_ID}/values/SIPs!A2:Z:clear`, { method: 'POST', headers: authHeader });
-      if (rows.length > 0) {
-        const res = await fetch(
-          `${BASE}/${SHEET_ID}/values/SIPs!A2:E?valueInputOption=RAW`,
-          { method: 'PUT', headers: authHeader, body: JSON.stringify({ values: rows }) },
-        );
-        const json = await res.json();
-        if (json.error) throw new Error(json.error.message || 'SIPs write failed');
-      }
-      return { statusCode: 200, headers, body: JSON.stringify({ ok: true }) };
-    }
-
-    if (tab === 'deleteSnapshot') {
-      if (!validDeleteSnapshotPayload(data)) return fail(400, 'Invalid delete payload');
-      const snaps = data.snapshots;
-      const headerRow = ['label', 'netWorth', 'cash', 'equity', 'debt', 'hdfc', 'icici', 'sbi', 'food', 'mfInv', 'mfGain', 'stocks', 'epf', 'gold', 'fd', 'mfDebt', 'ppf', 'given', 'avinake', 'misc'];
-      const rows = snaps.map((s) => {
-        const d = s.detail || {};
-        return [s.label, s.netWorth, s.cash, s.equity, s.debt, d.hdfc || 0, d.icici || 0, d.sbi || 0, d.food || 0, d.mfInv || 0, d.mfGain || 0, d.stocks || 0, d.epf || 0, d.gold || 0, d.fd || 0, d.mfDebt || 0, d.ppf || 0, d.given || 0, d.avinake || 0, d.misc || 0];
+      await fetch(`${BASE}/${SHEET_ID}/values/Snapshots!C1:C25?valueInputOption=RAW`, {
+        method: 'PUT', headers: authHeader, body: JSON.stringify({ values: labels })
       });
-      await fetch(`${BASE}/${SHEET_ID}/values/Snapshots!A1:T:clear`, { method: 'POST', headers: authHeader });
-      const res = await fetch(
-        `${BASE}/${SHEET_ID}/values/Snapshots!A1:T?valueInputOption=RAW`,
-        { method: 'PUT', headers: authHeader, body: JSON.stringify({ values: [headerRow, ...rows] }) },
-      );
-      const json = await res.json();
-      if (json.error) throw new Error(json.error.message || 'Snapshot delete failed');
+
+      // 1. Insert column at D
+      await fetch(batchUpdateUrl, {
+        method: 'POST',
+        headers: authHeader,
+        body: JSON.stringify({
+          requests: [{
+            insertDimension: {
+              range: { sheetId, dimension: 'COLUMNS', startIndex: 3, endIndex: 4 },
+              inheritFromBefore: false,
+            },
+          }],
+        }),
+      });
+
+      // 2. Write values to Column D
+      await fetch(`${BASE}/${SHEET_ID}/values/Snapshots!D1:D25?valueInputOption=RAW`, {
+        method: 'PUT', headers: authHeader, body: JSON.stringify({ values, majorDimension: 'COLUMNS' })
+      });
+
+      // 3. Apply formatting
+      await fetch(batchUpdateUrl, {
+        method: 'POST',
+        headers: authHeader,
+        body: JSON.stringify({
+          requests: [
+            { repeatCell: { range: { sheetId, startRowIndex: 2, endRowIndex: 3, startColumnIndex: 3, endColumnIndex: 4 }, cell: { userEnteredFormat: { backgroundColor: { red: 0.8, green: 1.0, blue: 0.8 }, textFormat: { bold: true } } }, fields: 'userEnteredFormat(backgroundColor,textFormat)' } },
+            { repeatCell: { range: { sheetId, startRowIndex: 3, endRowIndex: 4, startColumnIndex: 3, endColumnIndex: 4 }, cell: { userEnteredFormat: { backgroundColor: { red: 0.8, green: 0.9, blue: 1.0 }, textFormat: { bold: true } } }, fields: 'userEnteredFormat(backgroundColor,textFormat)' } }
+          ]
+        }),
+      });
+
+      return { statusCode: 200, headers, body: JSON.stringify({ ok: true }) };
+    }
+
+    if (tab === 'fullSync' || tab === 'deleteSnapshot') {
+      const snaps = (data.snapshots || []).slice().reverse(); // UI sends chronological, but fullSync writes newest at top/left in some versions? No, UI sends in same order it expects. 
+      // Actually, sheets.js `read` reverses them. 
+      // If `read` returns `[Oldest, ..., Newest]`, UI has that.
+      // If UI sends `[Oldest, ..., Newest]` to `fullSync`, we want them as columns D, E, F...
+      // `columns` array below: `snaps.map` will produce `[D, E, F...]`.
+      // Column D should be Newest. So we need `snaps` to be `[Newest, ..., Oldest]`.
+      const orderedSnaps = snaps; // Assuming UI order is correct for columns D, E, F
+
+      const labels = [
+        [''], ['Type'], ['Net Worth'], ['CASH'], ['Debt Inv.'], ['Equity Inv.'], [''], ['|| Details below ||'],
+        ['SBI'], ['ICICI'], ['HDFC'], ['Food Wallet'], ['MF Equity (Inv. Amount)'], ['MF Gains'], ['Stocks'],
+        ['FD'], ['Gold'], ['MF Debt'], ['PPF'], ['EPF (UAN 101619682423)'], ['Santosh'], ['Given'], ['Flat deposit'], ['Misc.'], ['Avinake']
+      ];
+
+      const columns = orderedSnaps.map(s => {
+        const d = s.detail || {};
+        return [
+          '', s.label, s.netWorth, s.cash, s.debt, s.equity, '', '|| Details below ||',
+          d.sbi || 0, d.icici || 0, d.hdfc || 0, d.food || 0, d.mfInv || 0, d.mfGain || 0, d.stocks || 0,
+          d.fd || 0, d.gold || 0, d.mfDebt || 0, d.ppf || 0, d.epf || 0, 0, d.given || 0, d.flatDeposit || 0, d.misc || 0, d.avinake || 0
+        ];
+      });
+
+      await fetch(`${BASE}/${SHEET_ID}/values/Snapshots!A1:ZZ100:clear`, { method: 'POST', headers: authHeader });
+
+      const valuesToWrite = labels.map((row, i) => [
+        '', '', row[0], ...columns.map(col => col[i])
+      ]);
+
+      await fetch(`${BASE}/${SHEET_ID}/values/Snapshots!A1?valueInputOption=RAW`, {
+        method: 'PUT', headers: authHeader, body: JSON.stringify({ values: valuesToWrite })
+      });
+
       return { statusCode: 200, headers, body: JSON.stringify({ ok: true }) };
     }
 

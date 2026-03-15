@@ -1,9 +1,9 @@
 import { Component, ViewChild, computed, inject, signal } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { DashboardHeaderComponent } from './components/dashboard-header/dashboard-header.component';
 import { HeroSummaryComponent } from './components/hero-summary/hero-summary.component';
 import { MainChartComponent } from './components/main-chart/main-chart.component';
 import { AllocationDonutComponent } from './components/allocation-donut/allocation-donut.component';
-import { GrowthTableComponent } from './components/growth-table/growth-table.component';
 import { AssetBreakdownComponent } from './components/asset-breakdown/asset-breakdown.component';
 import { SnapshotFormComponent } from './components/snapshot-form/snapshot-form.component';
 import { SipTrackerComponent } from './components/sip-tracker/sip-tracker.component';
@@ -20,11 +20,11 @@ import { ChartMode, Sip, Snapshot } from './core/models/wealth.models';
 @Component({
   selector: 'app-root',
   imports: [
+    CommonModule,
     DashboardHeaderComponent,
     HeroSummaryComponent,
     MainChartComponent,
     AllocationDonutComponent,
-    GrowthTableComponent,
     AssetBreakdownComponent,
     SnapshotFormComponent,
     SipTrackerComponent,
@@ -47,10 +47,29 @@ export class App {
   protected readonly entryTab = signal<'snapshot' | 'sip'>('snapshot');
   protected readonly theme = signal<'dark' | 'light'>('dark');
   protected readonly pendingDelete = signal<{ type: 'sip' | 'snapshot'; index: number } | null>(null);
+
+  // Alerts logic
+
+  protected readonly alerts = computed(() => {
+    const last = this.data.lastSnapshot();
+    if (!last) return [];
+    const alerts: string[] = [];
+    const nw = last.netWorth;
+
+    const equityPct = (last.equity / nw) * 100;
+    const cashPct = (last.cash / nw) * 100;
+
+    if (equityPct > 70) alerts.push('⚠️ Equity allocation is very high (>70%). Consider rebalancing.');
+    if (equityPct < 40) alerts.push('⚠️ Equity allocation is low (<40%). Consider increasing investments.');
+    if (cashPct > 20) alerts.push('⚠️ Cash drag: Over 20% in idle cash. Deploy to assets.');
+
+    return alerts;
+  });
+
   protected readonly lastUpdated = computed(() => `Last updated: ${this.data.lastSnapshot()?.label ?? '—'}`);
   protected readonly previousSnapshot = computed(() => {
     const snapshots = this.data.snapshots();
-    return snapshots.length > 1 ? snapshots[snapshots.length - 2] : null;
+    return snapshots.length > 1 ? snapshots[1] : null;
   });
 
   protected async doLogin(credentials: { user: string; pass: string }): Promise<void> {
@@ -96,6 +115,7 @@ export class App {
   protected toggleTheme(): void {
     const next = this.theme() === 'dark' ? 'light' : 'dark';
     this.theme.set(next);
+    document.documentElement.setAttribute('data-theme', next);
     document.body.classList.toggle('theme-light', next === 'light');
   }
 

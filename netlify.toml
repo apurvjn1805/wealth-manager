@@ -1,6 +1,12 @@
 [build]
-  publish = "public"
+  publish = "frontend/dist/browser"
   functions = "netlify/functions"
+
+[dev]
+  command = "npm start"
+  port = 8888
+  targetPort = 4200
+  publish = "frontend/dist/browser"
 
 [[headers]]
   for = "/*"

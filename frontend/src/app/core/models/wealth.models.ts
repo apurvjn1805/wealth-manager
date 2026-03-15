@@ -13,6 +13,7 @@ export interface SnapshotDetail {
   ppf: number;
   given: number;
   avinake: number;
+  flatDeposit: number;
   misc: number;
 }
 
@@ -22,6 +23,7 @@ export interface Snapshot {
   cash: number;
   equity: number;
   debt: number;
+  other: number;
   detail: SnapshotDetail;
 }
 
@@ -31,6 +33,13 @@ export interface Sip {
   day: number;
   type: string;
   active: boolean;
+}
+
+export interface Goal {
+  name: string;
+  target: number;
+  current: number;
+  deadline?: string;
 }
 
 export type ChartMode = 'networth' | 'stacked' | 'growth';

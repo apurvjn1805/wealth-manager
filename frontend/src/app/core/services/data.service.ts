@@ -10,12 +10,12 @@ export class DataService {
   readonly sips = signal<Sip[]>([]);
   readonly syncStatus = signal('');
   readonly syncColor = signal('#666680');
-  readonly lastSnapshot = computed(() => this.snapshots()[this.snapshots().length - 1] ?? null);
+  readonly lastSnapshot = computed(() => this.snapshots()[0] ?? null);
 
   constructor(
     private readonly sheetsService: SheetsService,
     private readonly toastService: ToastService,
-  ) {}
+  ) { }
 
   async loadData(): Promise<boolean> {
     const res = await this.sheetsService.read();
@@ -23,19 +23,21 @@ export class DataService {
       return false;
     }
     const data = await res.json();
-    const snapshots = (data.snapshots ?? [])
-      .map((r: Record<string, string>) => mapSnapshotRow(r))
-      .filter((s: Snapshot) => s.label && s.netWorth > 0);
+
+    // New format already returns objects matching Snapshot interface
+    const snapshots = (data.snapshots as any[] ?? []).filter((s: Snapshot) => s.label && s.netWorth > 0);
     const sips = (data.sips ?? [])
       .map((r: Record<string, string>) => mapSipRow(r))
       .filter((s: Sip) => !!s.name);
-    this.snapshots.set(snapshots.length ? snapshots : SEED_SNAPSHOTS);
+
+    this.snapshots.set(snapshots.length ? snapshots.reverse() : SEED_SNAPSHOTS.slice().reverse());
+    console.log('Wealth Manager: Loaded snapshots', this.snapshots());
     this.sips.set(sips.length ? sips : SEED_SIPS);
     return true;
   }
 
   async saveSnapshot(snapshot: Snapshot): Promise<void> {
-    this.snapshots.update((value) => [...value, snapshot]);
+    this.snapshots.update((value) => [snapshot, ...value]);
     await this.writeWithStatus('Snapshots', snapshot);
   }
 
@@ -81,18 +83,20 @@ export class DataService {
 }
 
 function mapSnapshotRow(r: Record<string, string>): Snapshot {
+  const detail = {
+    hdfc: toNum(r['hdfc']), icici: toNum(r['icici']), sbi: toNum(r['sbi']), food: toNum(r['food']),
+    mfInv: toNum(r['mfInv']), mfGain: toNum(r['mfGain']), stocks: toNum(r['stocks']),
+    epf: toNum(r['epf']), gold: toNum(r['gold']), fd: toNum(r['fd']), mfDebt: toNum(r['mfDebt']),
+    ppf: toNum(r['ppf']), given: toNum(r['given']), avinake: toNum(r['avinake']), flatDeposit: toNum(r['flatDeposit']), misc: toNum(r['misc']),
+  };
   return {
     label: r['label'],
     netWorth: toNum(r['netWorth']),
     cash: toNum(r['cash']),
     equity: toNum(r['equity']),
     debt: toNum(r['debt']),
-    detail: {
-      hdfc: toNum(r['hdfc']), icici: toNum(r['icici']), sbi: toNum(r['sbi']), food: toNum(r['food']),
-      mfInv: toNum(r['mfInv']), mfGain: toNum(r['mfGain']), stocks: toNum(r['stocks']),
-      epf: toNum(r['epf']), gold: toNum(r['gold']), fd: toNum(r['fd']), mfDebt: toNum(r['mfDebt']),
-      ppf: toNum(r['ppf']), given: toNum(r['given']), avinake: toNum(r['avinake']), misc: toNum(r['misc']),
-    },
+    other: detail.given + detail.avinake + detail.misc,
+    detail,
   };
 }
 
@@ -113,13 +117,15 @@ function toNum(v: unknown): number {
 export function buildSnapshot(label: string, detail: SnapshotDetail): Snapshot {
   const cash = detail.hdfc + detail.icici + detail.sbi + detail.food;
   const equity = detail.mfInv + detail.mfGain + detail.stocks;
-  const debt = detail.epf + detail.gold + detail.fd + detail.mfDebt + detail.ppf + detail.given + detail.avinake + detail.misc;
+  const debt = detail.epf + detail.gold + detail.fd + detail.mfDebt + detail.ppf + detail.flatDeposit;
+  const others = detail.given + detail.avinake + detail.misc;
   return {
     label,
     cash,
     equity,
     debt,
-    netWorth: cash + equity + debt,
+    other: others,
+    netWorth: cash + equity + debt + others,
     detail,
   };
 }

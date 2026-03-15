@@ -55,12 +55,13 @@ export class SnapshotFormComponent {
   ] as const;
   readonly debtFields = [
     { key: 'epf', label: 'EPF (₹)' }, { key: 'gold', label: 'Gold (₹)' }, { key: 'fd', label: 'FD (₹)' }, { key: 'mfDebt', label: 'MF Debt (₹)' },
-    { key: 'ppf', label: 'PPF (₹)' }, { key: 'given', label: 'Given/Santosh (₹)' }, { key: 'avinake', label: 'Avinake (₹)' }, { key: 'misc', label: 'Flat + Misc (₹)' },
+    { key: 'ppf', label: 'PPF (₹)' }, { key: 'given', label: 'Given/Santosh (₹)' }, { key: 'flatDeposit', label: 'Flat Deposit (₹)' },
+    { key: 'misc', label: 'Misc (₹)' }, { key: 'avinake', label: 'Avinake (₹)' },
   ] as const;
 
   get cash(): number { return this.detail.hdfc + this.detail.icici + this.detail.sbi + this.detail.food; }
   get equity(): number { return this.detail.mfInv + this.detail.mfGain + this.detail.stocks; }
-  get debt(): number { return this.detail.epf + this.detail.gold + this.detail.fd + this.detail.mfDebt + this.detail.ppf + this.detail.given + this.detail.avinake + this.detail.misc; }
+  get debt(): number { return this.detail.epf + this.detail.gold + this.detail.fd + this.detail.mfDebt + this.detail.ppf + this.detail.given + this.detail.flatDeposit + this.detail.misc + this.detail.avinake; }
   get netWorth(): number { return this.cash + this.equity + this.debt; }
 
   get delta(): number | null {
@@ -83,6 +84,6 @@ export class SnapshotFormComponent {
 function emptyDetail(): SnapshotDetail {
   return {
     hdfc: 0, icici: 0, sbi: 0, food: 0, mfInv: 0, mfGain: 0, stocks: 0,
-    epf: 0, gold: 0, fd: 0, mfDebt: 0, ppf: 0, given: 0, avinake: 0, misc: 0,
+    epf: 0, gold: 0, fd: 0, mfDebt: 0, ppf: 0, given: 0, avinake: 0, flatDeposit: 0, misc: 0,
   };
 }

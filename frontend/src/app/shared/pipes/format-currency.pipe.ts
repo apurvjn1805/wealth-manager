@@ -10,6 +10,9 @@ export class FormatCurrencyPipe implements PipeTransform {
     if (safe >= 10000000) {
       return `₹${(safe / 10000000).toFixed(2)}Cr`;
     }
+    if (safe < 100000) {
+      return `₹${(safe / 1000).toFixed(2)}K`;
+    }
     return `₹${(safe / 100000).toFixed(2)}L`;
   }
 }

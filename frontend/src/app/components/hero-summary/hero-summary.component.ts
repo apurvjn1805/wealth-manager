@@ -16,6 +16,11 @@ import { FormatCurrencyPipe } from '../../shared/pipes/format-currency.pipe';
         }
       </div>
       <div>
+        <div class="hero-label">Cash</div>
+        <div class="stat-val" style="color:var(--cash)">{{ last?.cash | formatCurrency }}</div>
+        <div class="stat-sub">{{ cashPct }}</div>
+      </div>
+      <div>
         <div class="hero-label">Equity</div>
         <div class="stat-val" style="color:var(--equity)">{{ last?.equity | formatCurrency }}</div>
         <div class="stat-sub">{{ equityPct }}</div>
@@ -31,6 +36,11 @@ import { FormatCurrencyPipe } from '../../shared/pipes/format-currency.pipe';
 export class HeroSummaryComponent {
   @Input() last: Snapshot | null = null;
   @Input() previous: Snapshot | null = null;
+
+  get cashPct(): string {
+    if (!this.last?.netWorth) return '';
+    return `${((this.last.cash / this.last.netWorth) * 100).toFixed(1)}% of portfolio`;
+  }
 
   get equityPct(): string {
     if (!this.last?.netWorth) return '';

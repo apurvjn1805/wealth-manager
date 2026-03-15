@@ -38,7 +38,7 @@ import { ChartMode, Snapshot } from '../../core/models/wealth.models';
 export class MainChartComponent implements AfterViewInit, OnChanges {
   @Input() snapshots: Snapshot[] = [];
   @Input() mode: ChartMode = 'networth';
-  @Input() onModeChange: (mode: ChartMode) => void = () => {};
+  @Input() onModeChange: (mode: ChartMode) => void = () => { };
   @ViewChild('canvas') canvas?: ElementRef<HTMLCanvasElement>;
   private xPoints: number[] = [];
   private primaryVals: number[] = [];
@@ -102,11 +102,16 @@ export class MainChartComponent implements AfterViewInit, OnChanges {
     const pad = { top: 20, right: 20, bottom: 36, left: 62 };
     const cw = w - pad.left - pad.right;
     const ch = h - pad.top - pad.bottom;
-    const n = this.snapshots.length;
 
-    const datasets = this.getDatasets();
+    // We want to render chronologically (Oldest -> Newest) 
+    // but the source array is Newest -> Oldest.
+    const rawSnapshots = this.snapshots;
+    const renderSnapshots = [...rawSnapshots].reverse();
+    const n = renderSnapshots.length;
+
+    const datasets = this.getDatasetsForRender(renderSnapshots);
     this.primaryVals = datasets[0]?.vals ?? [];
-    const allV = datasets.flatMap((d) => d.vals);
+    const allV = datasets.flatMap((d: { vals: number[] }) => d.vals);
     const minV = Math.min(...allV) * (this.mode === 'growth' ? 1.4 : 0.9);
     const maxV = Math.max(...allV) * 1.05;
     const xP = (i: number) => pad.left + (i / (n - 1)) * cw;
@@ -127,10 +132,10 @@ export class MainChartComponent implements AfterViewInit, OnChanges {
       ctx.fillText(this.mode === 'growth' ? `${val.toFixed(1)}%` : `₹${val.toFixed(0)}L`, pad.left - 8, y + 4);
     }
 
-    datasets.forEach((ds) => {
+    datasets.forEach((ds: { vals: number[]; color: string; fill: string }) => {
       ctx.beginPath();
       ctx.moveTo(xP(0), yP(ds.vals[0]));
-      ds.vals.forEach((v, i) => { if (i > 0) ctx.lineTo(xP(i), yP(v)); });
+      ds.vals.forEach((v: number, i: number) => { if (i > 0) ctx.lineTo(xP(i), yP(v)); });
       ctx.lineTo(xP(n - 1), pad.top + ch);
       ctx.lineTo(xP(0), pad.top + ch);
       ctx.closePath();
@@ -139,7 +144,7 @@ export class MainChartComponent implements AfterViewInit, OnChanges {
 
       ctx.beginPath();
       ctx.moveTo(xP(0), yP(ds.vals[0]));
-      ds.vals.forEach((v, i) => { if (i > 0) ctx.lineTo(xP(i), yP(v)); });
+      ds.vals.forEach((v: number, i: number) => { if (i > 0) ctx.lineTo(xP(i), yP(v)); });
       ctx.strokeStyle = ds.color;
       ctx.lineWidth = 2.5;
       ctx.stroke();
@@ -148,23 +153,23 @@ export class MainChartComponent implements AfterViewInit, OnChanges {
     ctx.fillStyle = '#555570';
     ctx.font = "10px 'DM Mono',monospace";
     ctx.textAlign = 'center';
-    this.snapshots.forEach((s, i) => ctx.fillText(s.label, xP(i), h - 8));
-    this.xPoints = this.snapshots.map((_, i) => xP(i));
+    renderSnapshots.forEach((s: Snapshot, i: number) => ctx.fillText(s.label, xP(i), h - 8));
+    this.xPoints = renderSnapshots.map((_: Snapshot, i: number) => xP(i));
   }
 
-  private getDatasets(): { vals: number[]; color: string; fill: string }[] {
+  private getDatasetsForRender(snaps: Snapshot[]): { vals: number[]; color: string; fill: string }[] {
     if (this.mode === 'networth') {
-      return [{ vals: this.snapshots.map((s) => s.netWorth / 100000), color: '#c8f060', fill: 'rgba(200,240,96,0.06)' }];
+      return [{ vals: snaps.map((s: Snapshot) => s.netWorth / 100000), color: '#c8f060', fill: 'rgba(200,240,96,0.06)' }];
     }
     if (this.mode === 'stacked') {
       return [
-        { vals: this.snapshots.map((s) => s.netWorth / 100000), color: '#f0c860', fill: 'rgba(240,200,96,0.12)' },
-        { vals: this.snapshots.map((s) => (s.equity + s.cash) / 100000), color: '#c8f060', fill: 'rgba(200,240,96,0.12)' },
-        { vals: this.snapshots.map((s) => s.cash / 100000), color: '#60f0c8', fill: 'rgba(96,240,200,0.12)' },
+        { vals: snaps.map((s: Snapshot) => s.netWorth / 100000), color: '#f0c860', fill: 'rgba(240,200,96,0.12)' },
+        { vals: snaps.map((s: Snapshot) => (s.equity + s.cash) / 100000), color: '#c8f060', fill: 'rgba(200,240,96,0.12)' },
+        { vals: snaps.map((s: Snapshot) => s.cash / 100000), color: '#60f0c8', fill: 'rgba(96,240,200,0.12)' },
       ];
     }
     return [{
-      vals: this.snapshots.map((s, i) => (i === 0 ? 0 : Number((((s.netWorth - this.snapshots[i - 1].netWorth) / this.snapshots[i - 1].netWorth) * 100).toFixed(1)))),
+      vals: snaps.map((s: Snapshot, i: number) => (i === 0 ? 0 : Number((((s.netWorth - snaps[i - 1].netWorth) / snaps[i - 1].netWorth) * 100).toFixed(1)))),
       color: '#60c8f0',
       fill: 'rgba(96,200,240,0.06)',
     }];
