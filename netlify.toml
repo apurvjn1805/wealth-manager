@@ -1,12 +1,13 @@
 [build]
-  publish = "frontend/dist/browser"
+  command = "npm --prefix frontend install && npm --prefix frontend run build"
+  publish = "frontend/dist/frontend/browser"
   functions = "netlify/functions"
 
 [dev]
   command = "npm start"
   port = 8888
   targetPort = 4200
-  publish = "frontend/dist/browser"
+  publish = "frontend/dist/frontend/browser"
 
 [[headers]]
   for = "/*"
